@@ -1,0 +1,8 @@
+[package]
+name = "lh"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+ecow = "0.2.0"
+unscanny = "0.1.0"
