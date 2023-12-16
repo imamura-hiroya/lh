@@ -1,32 +1,27 @@
+mod args;
 mod display;
 mod lang;
 mod parse;
 
 use {
-    crate::lang::Term,
-    std::io::{
-        stdin,
-        stdout,
-        Result,
-        Write as _,
+    crate::{
+        args::Args,
+        lang::Term,
     },
+    eyre::{
+        eyre,
+        Result,
+    },
+    std::fs::read_to_string,
 };
 
 fn main() -> Result<()> {
-    let stdin = stdin();
-    let mut stdout = stdout();
-    let mut input = String::new();
+    println!(
+        "{}",
+        Term::parse(&read_to_string(Args::get()?.path)?)
+            .ok_or_else(|| eyre!("cannot parse the input"))?
+            .evaluate_rt()
+    );
 
-    loop {
-        print!("> ");
-        stdout.flush()?;
-        stdin.read_line(&mut input)?;
-
-        match Term::parse(&input) {
-            Option::Some(term) => println!("{}", term.evaluate_rt()),
-            Option::None => println!("cannot parse the input"),
-        }
-
-        input.clear();
-    }
+    Result::Ok(())
 }
