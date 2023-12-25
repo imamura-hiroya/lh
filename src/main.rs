@@ -6,7 +6,7 @@ mod parse;
 use {
     crate::{
         args::Args,
-        lang::Term,
+        lang::T,
     },
     eyre::{
         eyre,
@@ -18,9 +18,9 @@ use {
 fn main() -> Result<()> {
     println!(
         "{}",
-        Term::parse(&read_to_string(Args::get()?.path)?)
+        T::parse(&read_to_string(Args::get()?.path)?)
             .ok_or_else(|| eyre!("cannot parse the input"))?
-            .evaluate_rt()
+            .eval_star()
     );
 
     Result::Ok(())

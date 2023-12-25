@@ -18,18 +18,18 @@
 (\equal.
     (\1.
     (\2.
-    equal (power (succ (succ 0)) 0) (succ 0)
+    equal (power 2 0) 1
     ) (succ 1)
     ) (succ 0)
-) \m.\n. and (is0 (m pred n)) (is0 (n pred m))
+) \m.\n. and (is0 (sub m n)) (is0 (sub n m))
 ) \m.\n. n pred m
-) \m. fst (m (\p. pair (snd p) (plus (succ 0) (snd p))) (pair 0 0))
+) \m. fst (m (\p. pair (snd p) (succ (snd p))) (pair 0 0))
 ) \m. m (\x.false) true
 ) \n.\m. m (times n) (succ 0)
 ) \m.\n. m (plus n) 0
-) \m.\n.\s.\z. m s (n s z)
+) \m.\n. m succ n
 ) \n.\s.\z. s (n s z)
-) \s.\z. z
+) \s.\z.z
 ) \p. p false
 ) \p. p true
 ) \f.\s.\b. b f s

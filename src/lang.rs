@@ -7,87 +7,95 @@ use {
     },
 };
 
-pub enum Term {
-    Var(EcoString),
-    Abs(EcoString, Rc<Self>),
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct V {
+    pub name: EcoString,
+    pub tag: u32,
+}
+
+impl V {
+    pub fn new(name: EcoString) -> Self {
+        Self {
+            name,
+            tag: 0,
+        }
+    }
+
+    pub fn fresh(mut self, v: &HashSet<Self>) -> Self {
+        self.tag = 0;
+
+        while v.contains(&self) {
+            self.tag += 1;
+        }
+
+        self
+    }
+}
+
+pub enum T {
+    Var(V),
+    Abs(V, Rc<Self>),
     App(Rc<Self>, Rc<Self>),
 }
 
-impl Term {
-    pub fn new_var(name: EcoString) -> Rc<Self> {
-        Rc::new(Self::Var(name))
+impl T {
+    pub fn new_var(x: V) -> Rc<Self> {
+        Rc::new(Self::Var(x))
     }
 
-    pub fn new_abs(arg: EcoString, ret: Rc<Self>) -> Rc<Self> {
-        Rc::new(Self::Abs(arg, ret))
+    pub fn new_abs(x: V, t: Rc<Self>) -> Rc<Self> {
+        Rc::new(Self::Abs(x, t))
     }
 
-    pub fn new_app(fun: Rc<Self>, arg: Rc<Self>) -> Rc<Self> {
-        Rc::new(Self::App(fun, arg))
+    pub fn new_app(t1: Rc<Self>, t2: Rc<Self>) -> Rc<Self> {
+        Rc::new(Self::App(t1, t2))
     }
 
-    pub fn free_vars(&self) -> HashSet<EcoString> {
-        match self {
-            Self::Var(var) => HashSet::from([var.clone()]),
-            Self::Abs(arg, ret) => {
-                let mut vars = ret.free_vars();
-                vars.remove(arg);
-                vars
+    pub fn fv(self: &Rc<Self>) -> HashSet<V> {
+        match self.deref() {
+            Self::Var(x) => HashSet::from([x.clone()]),
+            Self::Abs(x, t) => {
+                let mut v = t.fv();
+                v.remove(x);
+                v
             },
-            Self::App(fun, arg) => {
-                let mut vars = fun.free_vars();
-                vars.extend(arg.free_vars());
-                vars
+            Self::App(t1, t2) => {
+                let mut v = t1.fv();
+                v.extend(t2.fv());
+                v
             },
         }
     }
 
-    pub fn substitute(self: &Rc<Self>, var: &str, term: &Rc<Self>) -> Rc<Self> {
+    pub fn subst(self: &Rc<Self>, x: &V, t: &Rc<Self>) -> Rc<Self> {
         match self.deref() {
-            Self::Var(name) => match name == var {
-                true => term,
+            Self::Var(x1) => match x == x1 {
+                true => t,
                 false => self,
             }
             .clone(),
-            Self::Abs(arg, ret) => match arg == var {
-                true => self.clone(),
-                false => {
-                    let mut new_arg = arg.clone();
-                    let free_vars = term.free_vars();
-                    let ret_buffer;
-
-                    let new_ret = match free_vars.contains(&new_arg) {
-                        true => {
-                            while {
-                                new_arg.push('\'');
-                                free_vars.contains(&new_arg)
-                            } {}
-
-                            ret_buffer = ret.substitute(arg, &Self::new_var(new_arg.clone()));
-                            &ret_buffer
-                        },
-                        false => ret,
-                    }
-                    .substitute(var, term);
-
-                    Self::new_abs(new_arg, new_ret)
-                },
+            Self::Abs(x1, t1) => {
+                let mut v = t1.fv();
+                v.remove(x1);
+                v.insert(x.clone());
+                v.extend(t.fv());
+                let x2 = x1.clone().fresh(&v);
+                let t2 = t1.subst(x1, &Self::new_var(x2.clone())).subst(x, t);
+                Self::new_abs(x2, t2)
             },
-            Self::App(fun, arg) => {
-                Self::new_app(fun.substitute(var, term), arg.substitute(var, term))
-            },
+            Self::App(t1, t2) => Self::new_app(t1.subst(x, t), t2.subst(x, t)),
         }
     }
 
-    pub fn evaluate(self: &Rc<Self>) -> Option<Rc<Self>> {
+    pub fn eval(self: &Rc<Self>) -> Option<Rc<Self>> {
         match self.deref() {
-            Self::App(fun, arg) => {
-                if let Option::Some(fun) = fun.evaluate() {
-                    Option::Some(Self::new_app(fun, arg.clone()))
-                } else if let Option::Some(arg) = arg.evaluate() {
-                    Option::Some(Self::new_app(fun.clone(), arg))
-                } else if let Self::Abs(arg_var, ret) = fun.deref() {
-                    Option::Some(ret.substitute(arg_var, arg))
+            Self::App(t1, t2) => {
+                if let Option::Some(t1) = t1.eval() {
+                    Option::Some(Self::new_app(t1, t2.clone()))
+                } else if let Option::Some(t2) = t2.eval() {
+                    Option::Some(Self::new_app(t1.clone(), t2))
+                } else if let Self::Abs(x, t1) = t1.deref() {
+                    Option::Some(t1.subst(x, t2))
                 } else {
                     Option::None
                 }
@@ -96,14 +104,14 @@ impl Term {
         }
     }
 
-    pub fn evaluate_rt(self: &Rc<Self>) -> Rc<Self> {
-        match self.evaluate() {
-            Option::Some(mut term) => {
-                while let Option::Some(next) = term.evaluate() {
-                    term = next
+    pub fn eval_star(self: &Rc<Self>) -> Rc<Self> {
+        match self.eval() {
+            Option::Some(mut t) => {
+                while let Option::Some(t1) = t.eval() {
+                    t = t1
                 }
 
-                term
+                t
             },
             Option::None => self.clone(),
         }

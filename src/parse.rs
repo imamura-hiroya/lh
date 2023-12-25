@@ -1,11 +1,13 @@
 use {
-    crate::lang::Term,
-    ecow::EcoString,
+    crate::lang::{
+        T,
+        V,
+    },
     std::rc::Rc,
     unscanny::Scanner,
 };
 
-impl Term {
+impl T {
     pub fn parse(s: &str) -> Option<Rc<Self>> {
         let mut scanner = Scanner::new(s);
         let result = parse_apps(&mut scanner)?;
@@ -25,24 +27,24 @@ fn scope<T>(scanner: &mut Scanner, parser: impl FnOnce(&mut Scanner) -> Option<T
     result
 }
 
-fn parse_var(scanner: &mut Scanner) -> Option<EcoString> {
+fn parse_var(scanner: &mut Scanner) -> Option<V> {
     scope(scanner, |scanner| {
         let var = scanner.eat_while(|c: char| c.is_alphanumeric() || c == '_');
         (!var.is_empty()).then_some(())?;
-        Option::Some(var.into())
+        Option::Some(V::new(var.into()))
     })
 }
 
-fn parse_chunk(scanner: &mut Scanner) -> Option<Rc<Term>> {
+fn parse_chunk(scanner: &mut Scanner) -> Option<Rc<T>> {
     parse_var(scanner)
-        .map(Term::new_var)
+        .map(T::new_var)
         .or_else(|| {
             scope(scanner, |scanner| {
                 scanner.eat_if('\\').then_some(())?;
                 let arg = parse_var(scanner)?;
                 scanner.eat_if('.').then_some(())?;
                 let ret = parse_apps(scanner)?;
-                Option::Some(Term::new_abs(arg, ret))
+                Option::Some(T::new_abs(arg, ret))
             })
         })
         .or_else(|| {
@@ -55,7 +57,7 @@ fn parse_chunk(scanner: &mut Scanner) -> Option<Rc<Term>> {
         })
 }
 
-fn parse_apps(scanner: &mut Scanner) -> Option<Rc<Term>> {
+fn parse_apps(scanner: &mut Scanner) -> Option<Rc<T>> {
     scope(scanner, |scanner| {
         scanner.eat_whitespace();
         let mut result = parse_chunk(scanner)?;
@@ -64,7 +66,7 @@ fn parse_apps(scanner: &mut Scanner) -> Option<Rc<Term>> {
             (!scanner.eat_whitespace().is_empty()).then_some(())?;
             parse_chunk(scanner)
         }) {
-            result = Term::new_app(result, arg);
+            result = T::new_app(result, arg);
         }
 
         scanner.eat_whitespace();

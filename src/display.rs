@@ -1,5 +1,8 @@
 use {
-    crate::lang::Term,
+    crate::lang::{
+        T,
+        V,
+    },
     std::fmt::{
         Display,
         Formatter,
@@ -7,13 +10,25 @@ use {
     },
 };
 
-impl Display for Term {
+impl Display for V {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
+        self.name.fmt(formatter)?;
+
+        for _ in 0..self.tag {
+            '\''.fmt(formatter)?;
+        }
+
+        Result::Ok(())
+    }
+}
+
+impl Display for T {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         self.display(formatter, false, true)
     }
 }
 
-impl Term {
+impl T {
     fn display(&self, formatter: &mut Formatter, is_arg: bool, is_tail: bool) -> FmtResult {
         match self {
             Self::Var(var) => var.fmt(formatter),
