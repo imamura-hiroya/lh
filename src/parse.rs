@@ -1,22 +1,24 @@
 use {
     crate::lang::{
+        E,
         T,
         V,
     },
+    ecow::EcoString,
     std::rc::Rc,
     unscanny::Scanner,
 };
 
 impl T {
     pub fn parse(s: &str) -> Option<Rc<Self>> {
-        let mut scanner = Scanner::new(s);
-        let result = parse_apps(&mut scanner)?;
-        scanner.done().then_some(())?;
-        Option::Some(result)
+        Option::None
     }
 }
 
-fn scope<T>(scanner: &mut Scanner, parser: impl FnOnce(&mut Scanner) -> Option<T>) -> Option<T> {
+fn parse_in_scope<T>(
+    scanner: &mut Scanner,
+    parser: impl FnOnce(&mut Scanner) -> Option<T>,
+) -> Option<T> {
     let backup = *scanner;
     let result = parser(scanner);
 
@@ -27,49 +29,62 @@ fn scope<T>(scanner: &mut Scanner, parser: impl FnOnce(&mut Scanner) -> Option<T
     result
 }
 
-fn parse_var(scanner: &mut Scanner) -> Option<V> {
-    scope(scanner, |scanner| {
+fn parse_iden(scanner: &mut Scanner) -> Option<EcoString> {
+    parse_in_scope(scanner, |scanner| {
         let var = scanner.eat_while(|c: char| c.is_alphanumeric() || c == '_');
         (!var.is_empty()).then_some(())?;
-        Option::Some(V::new(var.into()))
+        Option::Some(var.into())
     })
 }
 
-fn parse_chunk(scanner: &mut Scanner) -> Option<Rc<T>> {
-    parse_var(scanner)
-        .map(T::new_var)
-        .or_else(|| {
-            scope(scanner, |scanner| {
-                scanner.eat_if('\\').then_some(())?;
-                let arg = parse_var(scanner)?;
-                scanner.eat_if('.').then_some(())?;
-                let ret = parse_apps(scanner)?;
-                Option::Some(T::new_abs(arg, ret))
-            })
-        })
-        .or_else(|| {
-            scope(scanner, |scanner| {
-                scanner.eat_if('(').then_some(())?;
-                let apps = parse_apps(scanner)?;
-                scanner.eat_if(')').then_some(())?;
-                Option::Some(apps)
-            })
-        })
+fn parse_var(scanner: &mut Scanner) -> Option<V> {
+    parse_iden(scanner).map(V::new)
 }
 
-fn parse_apps(scanner: &mut Scanner) -> Option<Rc<T>> {
-    scope(scanner, |scanner| {
-        scanner.eat_whitespace();
-        let mut result = parse_chunk(scanner)?;
+fn parse_eff(scanner: &mut Scanner) -> Option<E> {
+    parse_iden(scanner).map(E)
+}
 
-        while let Option::Some(arg) = scope(scanner, |scanner| {
-            (!scanner.eat_whitespace().is_empty()).then_some(())?;
-            parse_chunk(scanner)
-        }) {
-            result = T::new_app(result, arg);
-        }
+fn parse_term_var(scanner: &mut Scanner) -> Option<Rc<T>> {
+    parse_var(scanner).map(T::new_var)
+}
 
-        scanner.eat_whitespace();
-        Option::Some(result)
+fn parse_term_abs(scanner: &mut Scanner) -> Option<Rc<T>> {
+    parse_in_scope(scanner, |scanner| {
+        scanner.eat_if('\\').then_some(())?;
+        let x = parse_var(scanner)?;
+        scanner.eat_if(". ").then_some(())?;
+
+        let t = parse_term_app(scanner)
+            .or_else(|| parse_term_var(scanner))
+            .or_else(|| parse_term_abs(scanner))
+            .or_else(|| parse_term_per(scanner))
+            .or_else(|| parse_term_han(scanner))?;
+
+        Option::Some(T::new_abs(x, t))
     })
+}
+
+fn parse_term_app(scanner: &mut Scanner) -> Option<Rc<T>> {
+    todo!()
+}
+
+fn parse_term_per(scanner: &mut Scanner) -> Option<Rc<T>> {
+    parse_in_scope(scanner, |scanner| {
+        let e = parse_eff(scanner)?;
+        scanner.eat_if('<').then_some(())?;
+
+        let t = parse_term_app(scanner)
+            .or_else(|| parse_term_var(scanner))
+            .or_else(|| parse_term_abs(scanner))
+            .or_else(|| parse_term_per(scanner))
+            .or_else(|| parse_term_han(scanner))?;
+
+        scanner.eat_if('>').then_some(())?;
+        Option::Some(T::new_per(e, t))
+    })
+}
+
+fn parse_term_han(scanner: &mut Scanner) -> Option<Rc<T>> {
+    todo!()
 }

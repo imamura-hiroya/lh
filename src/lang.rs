@@ -8,34 +8,38 @@ use {
 };
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct V {
-    pub name: EcoString,
-    pub tag: u32,
-}
+pub struct V(pub EcoString, pub u32);
 
 impl V {
-    pub fn new(name: EcoString) -> Self {
-        Self {
-            name,
-            tag: 0,
-        }
+    pub const fn new(name: EcoString) -> Self {
+        Self(name, 0)
+    }
+
+    pub const fn xu() -> Self {
+        Self::new(EcoString::inline("@xu"))
     }
 
     pub fn fresh(mut self, v: &HashSet<Self>) -> Self {
-        self.tag = 0;
+        self.1 = 0;
 
         while v.contains(&self) {
-            self.tag += 1;
+            self.1 += 1;
         }
 
         self
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct E(pub EcoString);
+
 pub enum T {
     Var(V),
     Abs(V, Rc<Self>),
     App(Rc<Self>, Rc<Self>),
+    Per(E, Rc<Self>),
+    Imp(E, Rc<Self>, Rc<Self>),
+    Han(E, Rc<Self>, Rc<Self>),
 }
 
 impl T {
@@ -51,6 +55,18 @@ impl T {
         Rc::new(Self::App(t1, t2))
     }
 
+    pub fn new_per(e: E, t: Rc<Self>) -> Rc<Self> {
+        Rc::new(Self::Per(e, t))
+    }
+
+    pub fn new_imp(e: E, t1: Rc<Self>, t2: Rc<Self>) -> Rc<Self> {
+        Rc::new(Self::Imp(e, t1, t2))
+    }
+
+    pub fn new_han(e: E, t1: Rc<Self>, t2: Rc<Self>) -> Rc<Self> {
+        Rc::new(Self::Han(e, t1, t2))
+    }
+
     pub fn fv(self: &Rc<Self>) -> HashSet<V> {
         match self.deref() {
             Self::Var(x) => HashSet::from([x.clone()]),
@@ -60,6 +76,17 @@ impl T {
                 v
             },
             Self::App(t1, t2) => {
+                let mut v = t1.fv();
+                v.extend(t2.fv());
+                v
+            },
+            Self::Per(_, t) => t.fv(),
+            Self::Imp(_, t1, t2) => {
+                let mut v = t1.fv();
+                v.extend(t2.fv());
+                v
+            },
+            Self::Han(_, t1, t2) => {
                 let mut v = t1.fv();
                 v.extend(t2.fv());
                 v
@@ -84,6 +111,9 @@ impl T {
                 Self::new_abs(x2, t2)
             },
             Self::App(t1, t2) => Self::new_app(t1.subst(x, t), t2.subst(x, t)),
+            Self::Per(e, t1) => Self::new_per(e.clone(), t1.subst(x, t)),
+            Self::Imp(e, t1, t2) => Self::new_imp(e.clone(), t1.subst(x, t), t2.subst(x, t)),
+            Self::Han(e, t1, t2) => Self::new_han(e.clone(), t1.subst(x, t), t2.subst(x, t)),
         }
     }
 
@@ -92,14 +122,94 @@ impl T {
             Self::App(t1, t2) => {
                 if let Option::Some(t1) = t1.eval() {
                     Option::Some(Self::new_app(t1, t2.clone()))
+                } else if let Self::Imp(e, t11, t12) = t1.deref() {
+                    Option::Some(Self::new_imp(
+                        e.clone(),
+                        t11.clone(),
+                        Self::new_abs(
+                            V::xu(),
+                            Self::new_app(
+                                Self::new_app(t12.clone(), Self::new_var(V::xu())),
+                                t2.clone(),
+                            ),
+                        ),
+                    ))
                 } else if let Option::Some(t2) = t2.eval() {
                     Option::Some(Self::new_app(t1.clone(), t2))
+                } else if let Self::Imp(e, t21, t22) = t2.deref() {
+                    Option::Some(Self::new_imp(
+                        e.clone(),
+                        t21.clone(),
+                        Self::new_abs(
+                            V::xu(),
+                            Self::new_app(
+                                t1.clone(),
+                                Self::new_app(t22.clone(), Self::new_var(V::xu())),
+                            ),
+                        ),
+                    ))
                 } else if let Self::Abs(x, t1) = t1.deref() {
                     Option::Some(t1.subst(x, t2))
                 } else {
                     Option::None
                 }
             },
+            Self::Per(e, t) => Option::Some(
+                if let Option::Some(t) = t.eval() {
+                    Self::new_per(e.clone(), t)
+                } else if let Self::Imp(e0, t1, t2) = t.deref() {
+                    Self::new_imp(
+                        e0.clone(),
+                        t1.clone(),
+                        Self::new_abs(
+                            V::xu(),
+                            Self::new_per(
+                                e.clone(),
+                                Self::new_app(t2.clone(), Self::new_var(V::xu())),
+                            ),
+                        ),
+                    )
+                } else {
+                    Self::new_imp(
+                        e.clone(),
+                        t.clone(),
+                        Self::new_abs(V::xu(), Self::new_var(V::xu())),
+                    )
+                },
+            ),
+            Self::Han(e, t1, t2) => Option::Some(
+                if let Option::Some(t2) = t2.eval() {
+                    Self::new_han(e.clone(), t1.clone(), t2.clone())
+                } else if let Self::Imp(e20, t21, t22) = t2.deref() {
+                    match e == e20 {
+                        true => Self::new_app(
+                            Self::new_app(t1.clone(), t21.clone()),
+                            Self::new_abs(
+                                V::xu(),
+                                Self::new_han(
+                                    e.clone(),
+                                    t1.clone(),
+                                    Self::new_app(t22.clone(), Self::new_var(V::xu())),
+                                ),
+                            ),
+                        ),
+                        false => Self::new_imp(
+                            e20.clone(),
+                            t21.clone(),
+                            Self::new_abs(
+                                V::xu(),
+                                Self::new_han(
+                                    e.clone(),
+                                    t1.clone(),
+                                    Self::new_app(t22.clone(), Self::new_var(V::xu())),
+                                ),
+                            ),
+                        ),
+                    }
+                } else {
+                    t2.clone()
+                },
+            ),
             _ => Option::None,
         }
     }

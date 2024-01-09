@@ -1,20 +1,24 @@
 use {
     crate::lang::{
+        E,
         T,
         V,
     },
-    std::fmt::{
-        Display,
-        Formatter,
-        Result as FmtResult,
+    std::{
+        fmt::{
+            Display,
+            Formatter,
+            Result as FmtResult,
+        },
+        ops::Deref as _,
     },
 };
 
 impl Display for V {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
-        self.name.fmt(formatter)?;
+        self.0.fmt(formatter)?;
 
-        for _ in 0..self.tag {
+        for _ in 0..self.1 {
             '\''.fmt(formatter)?;
         }
 
@@ -22,44 +26,46 @@ impl Display for V {
     }
 }
 
+impl Display for E {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
+        self.0.fmt(formatter)
+    }
+}
+
 impl Display for T {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
-        self.display(formatter, false, true)
-    }
-}
-
-impl T {
-    fn display(&self, formatter: &mut Formatter, is_arg: bool, is_tail: bool) -> FmtResult {
         match self {
-            Self::Var(var) => var.fmt(formatter),
-            Self::Abs(arg, ret) => scope(formatter, !is_tail, |formatter| {
-                write!(formatter, "\\{arg}. ")?;
-                ret.display(formatter, false, is_tail)
-            }),
-            Self::App(fun, arg) => scope(formatter, is_arg, |formatter| {
-                fun.display(formatter, false, false)?;
-                write!(formatter, " ")?;
-                arg.display(formatter, true, is_tail)?;
+            Self::Var(x) => x.fmt(formatter),
+            Self::Abs(x, t) => {
+                write!(formatter, "\\{x}. ")?;
+
+                match t.deref() {
+                    Self::Imp(_, _, _) => write!(formatter, "({t})"),
+                    _ => t.fmt(formatter),
+                }
+            },
+            Self::App(t1, t2) => {
+                match t1.deref() {
+                    Self::Var(_) | Self::App(_, _) | Self::Per(_, _) => t1.fmt(formatter),
+                    Self::Abs(_, _) | Self::Imp(_, _, _) | Self::Han(_, _, _) => {
+                        write!(formatter, "({t1})")
+                    },
+                }?;
+
+                ' '.fmt(formatter)?;
+
+                match t2.deref() {
+                    Self::Var(_) | Self::Abs(_, _) | Self::Per(_, _) | Self::Han(_, _, _) => {
+                        t2.fmt(formatter)
+                    },
+                    Self::App(_, _) | Self::Imp(_, _, _) => write!(formatter, "({t2})"),
+                }?;
+
                 Result::Ok(())
-            }),
+            },
+            Self::Per(e, t) => write!(formatter, "{e}<{t}>"),
+            Self::Imp(e, t1, t2) => write!(formatter, "{e}<{t1}> >>> {t2}"),
+            Self::Han(e, t1, t2) => write!(formatter, "{e} ~> {t1} |> {t2}"),
         }
     }
-}
-
-fn scope(
-    formatter: &mut Formatter,
-    in_scope: bool,
-    display: impl FnOnce(&mut Formatter) -> FmtResult,
-) -> FmtResult {
-    if in_scope {
-        write!(formatter, "(")?;
-    }
-
-    display(formatter)?;
-
-    if in_scope {
-        write!(formatter, ")")?;
-    }
-
-    Result::Ok(())
 }

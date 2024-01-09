@@ -1,6 +1,9 @@
 #set page(
-    margin: 20mm,
-    footer: align(center, counter(page).display("－1－")),
+    margin: (
+        top: 30mm,
+        bottom: 25mm,
+        x: 20mm,
+    ),
     footer-descent: 20mm - 10mm,
 )
 
@@ -12,6 +15,7 @@
     region: "JP",
 )
 
+#set heading(numbering: "1.1")
 #set figure.caption(separator: h(1em))
 
 #show heading: it => block({
@@ -48,15 +52,7 @@
     ]
 })
 
-= あらまし
-代数的エフェクトとハンドラは副作用を含むプログラムに対する新しい手法として近年注目されている．
-代数的エフェクトとハンドラが持つ利点の一つが，副作用を発生させるプログラムの記述を変えることなく副作用の動作を変更することが可能であるということである．
-しかし，エフェクトを発生させる計算自体を引数とするHigher-Order Effectsを直接扱うことはできず，利点の一つである高いモジュール性を失ってしまう．
-本研究では，Higher-Order Effectsを直接扱い代数的エフェクトと同程度のモジュール性を持ったプログラムを記述できるような言語の実装を試みる．
-
-#columns(2, gutter: 10mm)[
-    #set heading(numbering: "1.1")
-
+#columns(2, gutter: 7mm)[
     = はじめに
 
     = ラムダ計算
@@ -149,12 +145,24 @@
         ),
     ) <le_eval>
 
-    $ lambda (v, k). space k space v $
+    = 臨時
+
+    $ & t ::= x | lambda x:T.t | t space t | forall X::K.t | t space T | t ~> T | t gt.tri t | t ~> T >>> t \
+      & T ::= X | T -> T!T | forall X::K.T | lambda X::K.T | T space T | T ~> T | { T_i space ^(i in 0..n) } | T slash T \
+      & K ::= * | ! | K => K \
+      & Gamma ::= nothing | Gamma,x:T | Gamma,X::K $
+
+    #figure(
+        caption: "評価規則",
+        rules(
+            $(t_1 --> t'_1) / (t_1 space t_2 --> t'_1 space t_2)$,
+            $(t_1 ~> T >>> t_2) space t_3 --> t_1 ~> T >>> (t_2 space t_3)$,
+            $("pure"(t_1) space.quad t_2 --> t'_2) / (t_1 space t_2 --> t_1 space t'_2)$,
+            $("pure"(t_1)) / (t_1 space (t_2 ~> T >>> t_3) --> t_2 ~> T >>> (t_1 space t_3))$,
+            $("pure"(t_2)) / ((lambda x: T. t_1) space t_2 --> [x |-> t_2]t_1)$,
+            $:$,
+        ),
+    )
 
     = むすび
-
-    #set heading(numbering: none)
-
-    = 謝辞
-    = 参考文献
 ]
